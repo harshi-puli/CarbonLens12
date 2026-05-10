@@ -1,0 +1,21 @@
+#env
+.env
+.iss
+iss
+
+#logs
+logs
+*.log
+
+#node modules
+node_modules
+
+#data
+data
+CO2estimate.csv
+energy-consumption-by-source-and-country.csv
+energy-consumption-by-source-and-country.metadata.json
+.metadata
+
+#DS_store
+.DS_Store
