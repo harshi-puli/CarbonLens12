@@ -19,3 +19,6 @@ energy-consumption-by-source-and-country.metadata.json
 
 #DS_store
 .DS_Store
+
+#figures
+figures/*.html
