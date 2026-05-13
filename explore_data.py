@@ -28,6 +28,54 @@ country_mapping = {
     "Côte d\x92Ivoire": "Ivory Coast"
 }
 
+gdp_mapping = {
+    "Cote d'Ivoire": "Ivory Coast",
+    "Korea, Rep.": "South Korea",
+    "Congo, Dem. Rep.": "Democratic Republic of Congo",
+    "Iran, Islamic Rep.": "Iran",
+    "Turkiye": "Turkey",
+    "Kyrgyz Republic": "Kyrgyzstan",
+    "Bahamas, The": "Bahamas",
+    "Gambia, The": "Gambia",
+    "St. Lucia": "Saint Lucia",
+    "St. Kitts and Nevis": "Saint Kitts and Nevis",
+    "St. Vincent and the Grenadines": "Saint Vincent & Grenadines",
+    "St. Martin": "Saint Martin",
+    "Venezuela, RB": "Venezuela",
+    "Egypt, Arab Rep.": "Egypt",
+    "Tanzania": "United Rep. of Tanzania",
+    "Slovak Republic": "Slovakia",
+    "Hong Kong SAR, China": "Hong Kong",
+    "Moldova": "Republic of Moldova",
+    "Yemen, Rep.": "Yemen",
+    "Congo, Rep.": "Republic of Congo",
+    "West Bank and Gaza": "State of Palestine",
+    "Micronesia, Fed. Sts.": "Micronesia",
+    "Lao PDR": "Lao People's Dem. Rep.",
+    "Macao SAR, China": "China, Macao SAR",
+    "Korea, Dem. People's Rep.": "Dem. People's Rep. Korea",
+}
+
+gdp_aggregates = [
+    "IDA total", "Africa Eastern and Southern", "Sub-Saharan Africa",
+    "Upper middle income", "Euro area", "IBRD only", "South Asia",
+    "Post-demographic dividend", "European Union", "Africa Western and Central",
+    "Small states", "Arab World", "Latin America & Caribbean",
+    "Other small states", "Middle income", "Early-demographic dividend",
+    "Lower middle income", "Europe & Central Asia", "IDA only",
+    "Caribbean small states", "IDA & IBRD total", "High income",
+    "East Asia & Pacific", "North America", "OECD members",
+    "Low & middle income", "Not classified", "IDA blend",
+    "Least developed countries: UN classification", "Low income",
+    "Late-demographic dividend", "Pre-demographic dividend",
+    "Fragile and conflict affected situations", "Pacific island small states",
+    "Latin America & the Caribbean", "Central Europe and the Baltics",
+    "Middle East, North Africa, Afghanistan & Pakistan", "Middle East, North Africa, Afghanistan & Pakistan", "South Asia", "Europe & Central Asia",
+    "East Asia & Pacific", "Sub-Saharan Africa", "Latin America & Caribbean", "Latin America & the Caribbean",
+    'Heavily indebted poor countries', 'Sub-Saharan Africa', "Middle East, North Africa, Afghanistan & Pakistan",
+    "Virgin Islands", "Guam", "Channel Islands", 
+    "San Marino", "Monaco", "Somalia, Fed. Rep.", "Republic of Congo",
+]
 
 def normalize_name(name):
     name = re.sub(r'\(.*?\)', '', name)
@@ -82,8 +130,36 @@ def clean_consumption(df):
     print(df.head())
     print(f"{GREEN}...Consumption Data Cleaned!{RESET}")
     return df
+def clean_gdp(df): 
+    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+    df = df.rename(columns = {'Country Name':'Country', 'all years': 'Population'})
+    df = df[df["Country Code"].notna()]
+    df = df.drop(["Country Code", "Indicator Name","Indicator Code"], axis = 1) #redundant data
+    df = df[df["Country"] != "Total, all countries or areas"]
+    df = df[~df["Country"].isin(["Africa", "Asia", "Northern America", "Americas", "South America", "Europe", "Oceania", "World", "East Asia & Pacific"])] # excluding continents 
+    df = df[~df["Country"].isin(gdp_aggregates)] # excluding continents 
+    df["Country"] = df["Country"].apply(normalize_name)
+    df["Country"] = df["Country"].apply(normalize_name)
+    df["Country"] = df["Country"].replace(country_mapping)
+    df["Country"] = df["Country"].replace(gdp_mapping)
 
-def merge_data(c_df, ce_df, p_df):
+    #melting columns into rows
+    year_cols = [col for col in df.columns if col.isdigit()]
+
+    df = df.melt(
+            id_vars = ["Country"],
+            value_vars=year_cols,
+            var_name="Year",
+            value_name="gdp_usd")
+    
+    df["Year"] = df["Year"].astype(int)
+
+    df.to_csv('data/processed/gdp.csv', index=False)
+    print(df.head())
+    print(f"{GREEN}...Population Data Cleaned!{RESET}")
+    return df
+
+def merge_data(c_df, ce_df, p_df, g_df):
     df = pd.merge(c_df, ce_df, on=["Country", "Year"], how="outer")
     df = df.sort_values(["Country", "Year"])
     #filling in missing data with interpolation
@@ -96,6 +172,12 @@ def merge_data(c_df, ce_df, p_df):
     print(f"{MAGENTA}\nShape: {df.shape}{RESET}")
 
     df = pd.merge(df, p_df, on=["Country", "Year"], how="left")
+    df = pd.merge(df, g_df, on=["Country", "Year"], how="left")
+
+    #Drop rows with no energy values for the sake of ML process
+    energy_cols = ["Coal", "Oil", "Gas", "Solar", "Wind", "Hydropower"]
+    df = df.dropna(subset=energy_cols)
+    print(df.shape)
 
     df.to_csv('data/output/CO2_AND_ENERGY.csv', index = False)
     print(df.head())
@@ -129,6 +211,7 @@ def main():
     consumption_data = pd.read_csv('data/raw/energy-consumption-by-source-and-country.csv', encoding='latin-1') 
     carbon_data = pd.read_csv('data/raw/CO2estimate.csv', encoding='latin-1', skiprows=1) # latin-1 encoding to avoid issues with characters not being in UTF-8.
     population_data = pd.read_csv('data/raw/population/population.csv', encoding='latin-1')
+    gdp_data = pd.read_csv('data/raw/GDP/gdp.csv', encoding='latin-1', skiprows=4) #Renamed csv file to be more concise (gdp)
 
     explore_data(carbon_data, consumption_data)
 
@@ -140,10 +223,11 @@ def main():
     carbon_data = clean_co2(carbon_data)
     print(f"{YELLOW}\nPopulation Data{RESET}")
     population_data = clean_population(population_data)
+    gdp_data = clean_gdp(gdp_data)
 
     #call merge_data()
     print("\nMerging data...")
-    merged = merge_data(carbon_data, consumption_data, population_data)
+    merged = merge_data(carbon_data, consumption_data, population_data, gdp_data)
             #checking shape
     print(merged.shape)
 
@@ -151,7 +235,7 @@ def main():
     co2_countries = set(carbon_data["Country"].unique())
     energy_countries = set(consumption_data["Country"].unique())
 
-    print("In CO2 but not energy:")
+    print("\nIn CO2 but not energy:")
     print(sorted(co2_countries - energy_countries))
 
     print("\nIn energy but not CO2:")
